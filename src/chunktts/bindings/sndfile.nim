@@ -16,7 +16,6 @@ const
   SFM_WRITE* = 0x20
 
   SF_FORMAT_OGG* = 0x200000
-  SF_FORMAT_VORBIS* = 0x0060
   SF_FORMAT_OPUS* = 0x0064
 
 {.push importc, callconv: cdecl, header: "<sndfile.h>".}

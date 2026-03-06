@@ -83,9 +83,9 @@ proc decodeChunkAudio(cfg: RuntimeConfig; seqId, attempt: int;
 
 proc chunkAudioInfo(audio: DecodedAudio): ChunkAudioInfo =
   ChunkAudioInfo(
-    sampleRate: audio.info.sampleRate,
-    channels: audio.info.channels,
-    frames: audio.info.frames
+    sampleRate: audio.sampleRate,
+    channels: audio.channels,
+    frames: audio.frames
   )
 
 proc writeFinalOpus(cfg: RuntimeConfig; decodedChunks: seq[DecodedAudio]) =

@@ -10,6 +10,7 @@ type
     maxRetries*: int
 
   RuntimeConfig* = object
+    inputPath*: string
     outputPath*: string
     breakMarker*: string
     openaiConfig*: OpenAIConfig

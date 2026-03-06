@@ -1,6 +1,6 @@
 version       = "0.1.0"
 author        = "ageralis"
-description   = "Chunk stdin text into Kokoro TTS wav files"
+description   = "Chunk marked-up text files into one Kokoro TTS opus file"
 license       = "AGPL-3.0-only"
 srcDir        = "src"
 bin           = @["chunktts"]

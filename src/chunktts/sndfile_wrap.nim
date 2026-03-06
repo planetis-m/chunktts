@@ -1,17 +1,16 @@
 import ./bindings/sndfile
 
+const SfFormatOpus* = SF_FORMAT_OGG or SF_FORMAT_OPUS
+
 type
   AudioFile* = object
     raw: SndFileHandle
     info: SfInfo
 
-  AudioFileInfo* = object
+  DecodedAudio* = object
     sampleRate*: int
     channels*: int
     frames*: int64
-
-  DecodedAudio* = object
-    info*: AudioFileInfo
     samples*: seq[float32]
 
 proc `=destroy`*(audioFile: AudioFile) =
@@ -43,29 +42,21 @@ proc openAudioFile*(path: string): AudioFile =
   if pointer(result.raw) == nil:
     raiseSndFileError("sf_open failed")
 
-proc infoOf*(audioFile: AudioFile): AudioFileInfo =
-  AudioFileInfo(
-    sampleRate: int(audioFile.info.samplerate),
-    channels: int(audioFile.info.channels),
-    frames: int64(audioFile.info.frames)
-  )
+proc sampleRate*(audioFile: AudioFile): int {.inline.} =
+  int(audioFile.info.samplerate)
 
-proc readAudioFileInfo*(path: string): AudioFileInfo =
-  let audioFile = openAudioFile(path)
-  result = infoOf(audioFile)
+proc channels*(audioFile: AudioFile): int {.inline.} =
+  int(audioFile.info.channels)
 
-proc newAudioFileInfo(sampleRate, channels: int; frames: int64): AudioFileInfo =
-  AudioFileInfo(
-    sampleRate: sampleRate,
-    channels: channels,
-    frames: frames
-  )
+proc frames*(audioFile: AudioFile): int64 {.inline.} =
+  int64(audioFile.info.frames)
 
-proc openAudioFileForWrite(path: string; info: AudioFileInfo; format: cint): AudioFile =
+proc openAudioFileForWrite(path: string; sampleRate, channels: int;
+    format: cint): AudioFile =
   var rawInfo = SfInfo(
     frames: 0,
-    samplerate: info.sampleRate.cint,
-    channels: info.channels.cint,
+    samplerate: sampleRate.cint,
+    channels: channels.cint,
     format: format,
     sections: 0,
     seekable: 0
@@ -79,10 +70,13 @@ proc openAudioFileForWrite(path: string; info: AudioFileInfo; format: cint): Aud
 
 proc readDecodedAudio*(path: string): DecodedAudio =
   let audioFile = openAudioFile(path)
-  let info = audioFile.infoOf()
-  let sampleCount = int(info.frames) * info.channels
+  let frames = audioFile.frames
+  let channels = audioFile.channels
+  let sampleCount = int(frames) * channels
   result = DecodedAudio(
-    info: info,
+    sampleRate: audioFile.sampleRate,
+    channels: channels,
+    frames: frames,
     samples: newSeq[float32](sampleCount)
   )
 
@@ -90,28 +84,30 @@ proc readDecodedAudio*(path: string): DecodedAudio =
     let framesRead = sf_readf_float(
       audioFile.raw,
       cast[ptr cfloat](addr result.samples[0]),
-      info.frames.SfCount
+      frames.SfCount
     )
-    if framesRead != info.frames.SfCount:
+    if framesRead != frames.SfCount:
       raiseSndFileError("sf_readf_float failed", audioFile.raw)
 
 proc concatAudio*(chunks: openArray[DecodedAudio]): DecodedAudio =
   if chunks.len == 0:
     raise newException(ValueError, "cannot concatenate zero audio chunks")
 
-  let sampleRate = chunks[0].info.sampleRate
-  let channels = chunks[0].info.channels
+  let sampleRate = chunks[0].sampleRate
+  let channels = chunks[0].channels
   var totalFrames = 0'i64
 
   for chunk in chunks:
-    if chunk.info.sampleRate != sampleRate:
+    if chunk.sampleRate != sampleRate:
       raise newException(ValueError, "chunk sample rates do not match")
-    if chunk.info.channels != channels:
+    if chunk.channels != channels:
       raise newException(ValueError, "chunk channel counts do not match")
-    totalFrames.inc(chunk.info.frames)
+    totalFrames.inc(chunk.frames)
 
   result = DecodedAudio(
-    info: newAudioFileInfo(sampleRate, channels, totalFrames),
+    sampleRate: sampleRate,
+    channels: channels,
+    frames: totalFrames,
     samples: @[]
   )
 
@@ -121,15 +117,16 @@ proc concatAudio*(chunks: openArray[DecodedAudio]): DecodedAudio =
 proc writeOpusFile*(path: string; audio: DecodedAudio) =
   let audioFile = openAudioFileForWrite(
     path,
-    audio.info,
-    SF_FORMAT_OGG or SF_FORMAT_OPUS
+    audio.sampleRate,
+    audio.channels,
+    SfFormatOpus
   )
 
   if audio.samples.len > 0:
     let framesWritten = sf_writef_float(
       audioFile.raw,
-      cast[ptr cfloat](unsafeAddr audio.samples[0]),
-      audio.info.frames.SfCount
+      cast[ptr cfloat](addr audio.samples[0]),
+      audio.frames.SfCount
     )
-    if framesWritten != audio.info.frames.SfCount:
+    if framesWritten != audio.frames.SfCount:
       raiseSndFileError("sf_writef_float failed", audioFile.raw)

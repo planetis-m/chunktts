@@ -8,6 +8,7 @@ import ./[constants, logging, types]
 
 type
   CliArgs = object
+    inputPath: string
     outputPath: string
 
   JsonRuntimeConfig = object
@@ -19,7 +20,7 @@ type
 
 const HelpText = """
 Usage:
-  chunktts OUTPUT.opus < input.txt
+  chunktts INPUT.txt OUTPUT.opus
 
 Options:
   --help, -h       Show this help and exit.
@@ -29,16 +30,18 @@ proc cliError(message: string) =
   quit(message & "\n\n" & HelpText, ExitFatalRuntime)
 
 proc parseCliArgs(cliArgs: seq[string]): CliArgs =
-  result = CliArgs(outputPath: "")
+  result = CliArgs(inputPath: "", outputPath: "")
   var parser = initOptParser(cliArgs)
 
   for kind, key, val in parser.getopt():
     case kind
     of cmdArgument:
-      if result.outputPath.len == 0:
+      if result.inputPath.len == 0:
+        result.inputPath = parser.key
+      elif result.outputPath.len == 0:
         result.outputPath = parser.key
       else:
-        cliError("multiple output paths specified")
+        cliError("too many positional arguments")
     of cmdLongOption:
       case key
       of "help":
@@ -53,6 +56,8 @@ proc parseCliArgs(cliArgs: seq[string]): CliArgs =
     of cmdEnd:
       discard
 
+  if result.inputPath.len == 0:
+    cliError("missing required INPUT.txt argument")
   if result.outputPath.len == 0:
     cliError("missing required OUTPUT.opus argument")
 
@@ -107,6 +112,7 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
     raise newException(ValueError, "break marker must not be empty")
 
   result = RuntimeConfig(
+    inputPath: parsed.inputPath,
     outputPath: parsed.outputPath,
     breakMarker: resolvedBreakMarker,
     openaiConfig: OpenAIConfig(

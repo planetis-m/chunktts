@@ -7,9 +7,12 @@ switch("mm", "atomicArc")
 when defined(windows):
   switch("cc", "vcc")
   let vcpkgRoot = getEnv("VCPKG_ROOT", "C:/vcpkg/installed/x64-windows-release")
+  switch("passC", "-I" & vcpkgRoot & "/include")
   switch("passL", vcpkgRoot & "/lib/libcurl.lib")
   switch("passL", vcpkgRoot & "/lib/sndfile.lib")
 elif defined(macosx):
+  switch("passC", "-I" & staticExec("brew --prefix curl") & "/include")
+  switch("passC", "-I" & staticExec("brew --prefix libsndfile") & "/include")
   switch("passL", "-L" & staticExec("brew --prefix curl") & "/lib")
   switch("passL", "-L" & staticExec("brew --prefix libsndfile") & "/lib")
   switch("passL", "-lcurl")

@@ -20,16 +20,16 @@ proc main() =
   writeFile(wavPath, decode(SampleWavBase64))
 
   let decoded = readDecodedAudio(wavPath)
-  doAssert decoded.info.sampleRate == 8000
-  doAssert decoded.info.channels == 1
-  doAssert decoded.info.frames == 8
+  doAssert decoded.sampleRate == 8000
+  doAssert decoded.channels == 1
+  doAssert decoded.frames == 8
 
   writeOpusFile(opusPath, decoded)
 
-  let info = readAudioFileInfo(opusPath)
-  doAssert info.sampleRate == 8000
-  doAssert info.channels == 1
-  doAssert info.frames == 8
+  let opusAudio = openAudioFile(opusPath)
+  doAssert opusAudio.sampleRate == 8000
+  doAssert opusAudio.channels == 1
+  doAssert opusAudio.frames == 8
 
 when isMainModule:
   main()

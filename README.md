@@ -1,7 +1,6 @@
 # chunktts
 
-Ordered text-to-speech from stdin to one `.opus` file for shell pipelines and
-AI preprocessing workflows.
+Ordered text-to-speech from marked-up text files to one `.opus` file.
 
 `chunktts` reads text that already contains split markers like `<break>`,
 sends the chunks to DeepInfra's OpenAI-compatible Kokoro TTS endpoint, and
@@ -9,9 +8,9 @@ writes one final `.opus` file in deterministic chunk order.
 
 ## Core guarantees
 
-- stdin is input only, stderr is logs only
+- input is one text file, stderr is logs only
 - on success: exactly one final `.opus` output file
-- final audio order matches the normalized chunk order from stdin
+- final audio order matches the normalized chunk order from the input file
 - bounded in-flight network work via `max_inflight`
 - retry handling for transient network/API failures
 - no partial final artifact on partial failure
@@ -22,7 +21,7 @@ writes one final `.opus` file in deterministic chunk order.
 
 1. `main` thread:
 - parses CLI and config
-- splits stdin into ordered chunks
+- reads one input text file and splits it into ordered chunks
 - schedules retries and preserves output order
 - validates chunk audio with `libsndfile`
 - writes one final `.opus` file
@@ -122,18 +121,18 @@ Built-in defaults:
 ## CLI
 
 ```bash
-./chunktts OUTPUT.opus < input.txt
+./chunktts INPUT.txt OUTPUT.opus
 ./chunktts --help
 ```
 
-- `OUTPUT.opus` is required
-- input always comes from `stdin`
+- `INPUT.txt` and `OUTPUT.opus` are required
 - `stdout` is unused during normal operation
 - logs and fatal errors go to `stderr`
 
 ## Input format
 
-`chunktts` splits stdin on a marker string. The default marker is `<break>`.
+`chunktts` splits the input file on a marker string. The default marker is
+`<break>`.
 
 Example:
 
@@ -150,15 +149,14 @@ markers like `<break><break>` do not create silent segments.
 
 ```bash
 export DEEPINFRA_API_KEY=...
-printf 'First chunk.<break>Second chunk.<break>Third chunk.\n' | \
-  ./chunktts output.opus
+./chunktts input.txt output.opus
 ```
 
 Typical upstream workflow:
 
-1. generate or preprocess text
+1. generate or preprocess text into a file
 2. insert `<break>` markers where audio boundaries should be
-3. pipe the result into `chunktts`
+3. run `chunktts INPUT.txt OUTPUT.opus`
 4. consume one final `.opus` file
 
 ## Exit codes
@@ -173,7 +171,7 @@ If any chunk fails after retries, `chunktts` does not publish the final
 ## Requirements
 
 - DeepInfra API key via `DEEPINFRA_API_KEY` or `config.json`
-- marked-up stdin text containing chunk boundaries
+- one marked-up text file containing chunk boundaries
 - if building from source: Nim `>= 2.2.8`, Atlas, and platform dev packages for
   `libcurl` and `libsndfile`
 

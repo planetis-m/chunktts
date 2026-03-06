@@ -138,15 +138,19 @@ proc main() =
     release(state.lock)
 
   let outputDir = uniqueTempDir()
+  let inputPath = outputDir / "input.txt"
   let outputPath = outputDir / "combined.opus"
   createDir(outputDir)
   defer:
+    if fileExists(inputPath):
+      removeFile(inputPath)
     if fileExists(outputPath):
       removeFile(outputPath)
     if dirExists(outputDir):
       removeDir(outputDir)
 
   let cfg = RuntimeConfig(
+    inputPath: inputPath,
     outputPath: outputPath,
     breakMarker: "<break>",
     openaiConfig: OpenAIConfig(
@@ -180,10 +184,10 @@ proc main() =
   doAssert metrics.retryRequests == 2
 
   doAssert fileExists(outputPath)
-  let info = readAudioFileInfo(outputPath)
-  doAssert info.sampleRate == 8000
-  doAssert info.channels == 1
-  doAssert info.frames == 24
+  let opusAudio = openAudioFile(outputPath)
+  doAssert opusAudio.sampleRate == 8000
+  doAssert opusAudio.channels == 1
+  doAssert opusAudio.frames == 24
 
 when isMainModule:
   main()
