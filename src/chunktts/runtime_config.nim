@@ -14,6 +14,7 @@ type
   JsonRuntimeConfig = object
     api_key: string
     api_url: string
+    model: string
     voice: string
     speed: float
     max_inflight: int
@@ -66,6 +67,7 @@ proc defaultJsonRuntimeConfig(): JsonRuntimeConfig =
   JsonRuntimeConfig(
     api_key: "",
     api_url: ApiUrl,
+    model: Model,
     voice: Voice,
     speed: Speed,
     max_inflight: MaxInflight,
@@ -123,7 +125,7 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
       apiKey: resolvedApiKey
     ),
     networkConfig: NetworkConfig(
-      model: Model,
+      model: ifNonEmpty(rawConfig.model, Model),
       voice: ifNonEmpty(rawConfig.voice, Voice),
       speed: ifInRange(rawConfig.speed, 0.25, 4.0, Speed),
       maxInflight: ifPositive(rawConfig.max_inflight, MaxInflight),

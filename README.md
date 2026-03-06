@@ -94,6 +94,7 @@ Supported keys:
 
 - `api_key`
 - `api_url`
+- `model`
 - `voice`
 - `speed`
 - `max_inflight`
@@ -104,6 +105,7 @@ Example:
 ```json
 {
   "api_url": "https://api.deepinfra.com/v1/openai/audio/speech",
+  "model": "hexgrad/Kokoro-82M",
   "voice": "af_bella",
   "speed": 1.0,
   "max_inflight": 32,
