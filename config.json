@@ -1,6 +1,8 @@
 {
   "api_key": "replace-with-key",
+  "api_url": "https://api.deepinfra.com/v1/openai/audio/speech",
   "voice": "af_bella",
   "speed": 1.0,
-  "max_inflight": 32
+  "max_inflight": 32,
+  "max_retries": 5
 }

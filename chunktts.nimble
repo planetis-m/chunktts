@@ -1,4 +1,4 @@
-version       = "0.1.0"
+version       = "0.2.0"
 author        = "ageralis"
 description   = "Generate one Opus speech file from marked-up text with Kokoro TTS"
 license       = "AGPL-3.0-only"

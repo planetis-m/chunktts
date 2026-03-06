@@ -13,9 +13,11 @@ type
 
   JsonRuntimeConfig = object
     api_key: string
+    api_url: string
     voice: string
     speed: float
     max_inflight: int
+    max_retries: int
 
 const HelpText = """
 Usage:
@@ -63,9 +65,11 @@ proc parseCliArgs(cliArgs: seq[string]): CliArgs =
 proc defaultJsonRuntimeConfig(): JsonRuntimeConfig =
   JsonRuntimeConfig(
     api_key: "",
+    api_url: ApiUrl,
     voice: Voice,
     speed: Speed,
-    max_inflight: MaxInflight
+    max_inflight: MaxInflight,
+    max_retries: MaxRetries
   )
 
 proc loadOptionalJsonRuntimeConfig(path: Path): JsonRuntimeConfig =
@@ -95,6 +99,10 @@ template ifPositive(value, fallback: untyped): untyped =
   if value > 0: value
   else: fallback
 
+template ifNonNegative(value, fallback: untyped): untyped =
+  if value >= 0: value
+  else: fallback
+
 template ifInRange(value, minValue, maxValue, fallback: untyped): untyped =
   if value >= minValue and value <= maxValue: value
   else: fallback
@@ -104,13 +112,14 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
   let configPath = Path(getAppDir()) / Path(DefaultConfigPath)
   let rawConfig = loadOptionalJsonRuntimeConfig(configPath)
   let resolvedApiKey = resolveApiKey(rawConfig.api_key)
+  let resolvedApiUrl = ifNonEmpty(rawConfig.api_url, ApiUrl)
 
   result = RuntimeConfig(
     inputPath: parsed.inputPath,
     outputPath: parsed.outputPath,
     breakMarker: BreakMarker,
     openaiConfig: OpenAIConfig(
-      url: ApiUrl,
+      url: resolvedApiUrl,
       apiKey: resolvedApiKey
     ),
     networkConfig: NetworkConfig(
@@ -119,6 +128,6 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
       speed: ifInRange(rawConfig.speed, 0.25, 4.0, Speed),
       maxInflight: ifPositive(rawConfig.max_inflight, MaxInflight),
       totalTimeoutMs: TotalTimeoutMs,
-      maxRetries: MaxRetries
+      maxRetries: ifNonNegative(rawConfig.max_retries, MaxRetries)
     )
   )

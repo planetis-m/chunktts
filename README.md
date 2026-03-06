@@ -93,17 +93,21 @@ If `DEEPINFRA_API_KEY` is set, it overrides `api_key` from `config.json`.
 Supported keys:
 
 - `api_key`
+- `api_url`
 - `voice`
 - `speed`
 - `max_inflight`
+- `max_retries`
 
 Example:
 
 ```json
 {
+  "api_url": "https://api.deepinfra.com/v1/openai/audio/speech",
   "voice": "af_bella",
   "speed": 1.0,
-  "max_inflight": 32
+  "max_inflight": 32,
+  "max_retries": 5
 }
 ```
 
@@ -115,6 +119,7 @@ Built-in defaults:
 - voice: `af_bella`
 - speed: `1.0`
 - max inflight: `32`
+- max retries: `5`
 
 ## CLI
 
