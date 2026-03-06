@@ -18,7 +18,9 @@ proc runApp*(): int =
       raise newException(ValueError,
         "missing API key; set DEEPINFRA_API_KEY or api_key in config.json")
 
-    createDir(cfg.outputDir)
+    let outputDir = parentDir(cfg.outputPath)
+    if outputDir.len > 0 and not dirExists(outputDir):
+      createDir(outputDir)
     let chunks = splitChunks(stdin.readAll(), cfg.breakMarker)
     if chunks.len == 0:
       raise newException(ValueError, "stdin did not produce any non-empty chunks")

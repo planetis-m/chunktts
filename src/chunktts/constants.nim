@@ -9,7 +9,6 @@ const
   MaxInflight* = 32
   TotalTimeoutMs* = 120_000
   MaxRetries* = 5
-  FileDigits* = 4
 
   ExitAllOk* = 0
   ExitPartialFailure* = 2

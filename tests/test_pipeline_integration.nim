@@ -138,13 +138,16 @@ proc main() =
     release(state.lock)
 
   let outputDir = uniqueTempDir()
+  let outputPath = outputDir / "combined.opus"
   createDir(outputDir)
   defer:
+    if fileExists(outputPath):
+      removeFile(outputPath)
     if dirExists(outputDir):
       removeDir(outputDir)
 
   let cfg = RuntimeConfig(
-    outputDir: outputDir,
+    outputPath: outputPath,
     breakMarker: "<break>",
     openaiConfig: OpenAIConfig(
       url: "http://127.0.0.1:" & $port & "/v1/openai/audio/speech",
@@ -176,13 +179,11 @@ proc main() =
   doAssert metrics.maxActive == 2
   doAssert metrics.retryRequests == 2
 
-  for index in 1 .. 3:
-    let path = outputDir / align($index, 4, '0') & ".wav"
-    doAssert fileExists(path)
-    let info = readAudioFileInfo(path)
-    doAssert info.sampleRate == 8000
-    doAssert info.channels == 1
-    doAssert info.frames == 8
+  doAssert fileExists(outputPath)
+  let info = readAudioFileInfo(outputPath)
+  doAssert info.sampleRate == 8000
+  doAssert info.channels == 1
+  doAssert info.frames == 24
 
 when isMainModule:
   main()

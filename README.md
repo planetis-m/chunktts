@@ -1,86 +1,105 @@
 # chunktts
 
-Turn marked-up stdin text into numbered `.wav` files with DeepInfra's
-OpenAI-compatible Kokoro TTS endpoint.
+Ordered text-to-speech from stdin to one `.opus` file for shell pipelines and
+AI preprocessing workflows.
 
-`chunktts` is built for shell pipelines. Feed it text that already contains
-split markers like `<break>`, and it will:
+`chunktts` reads text that already contains split markers like `<break>`,
+sends the chunks to DeepInfra's OpenAI-compatible Kokoro TTS endpoint, and
+writes one final `.opus` file in deterministic chunk order.
 
-- split the input into chunks
-- send chunks in parallel with a bounded `max_inflight` limit
-- retry transient API failures
-- validate each returned WAV with `libsndfile`
-- write deterministic `0001.wav`, `0002.wav`, ... files
+## Core guarantees
 
-## Why try it?
+- stdin is input only, stderr is logs only
+- on success: exactly one final `.opus` output file
+- final audio order matches the normalized chunk order from stdin
+- bounded in-flight network work via `max_inflight`
+- retry handling for transient network/API failures
+- no partial final artifact on partial failure
 
-- Stdin-first workflow: no input file format to invent, just pipe text in.
-- Minimal surface area: one required CLI argument, a tiny `config.json`, and no
-  extra operational flags.
-- Bounded parallelism: uses the same Relay-based max-inflight pattern as
-  `pdfocr`, so it scales without unbounded request bursts.
-- Safer audio output: every generated WAV is reopened through `libsndfile`
-  before it becomes a final output file.
+## Design
 
-## Quick Start
+`chunktts` uses the same two-part runtime model as `pdfocr`:
 
-Build:
+1. `main` thread:
+- parses CLI and config
+- splits stdin into ordered chunks
+- schedules retries and preserves output order
+- validates chunk audio with `libsndfile`
+- writes one final `.opus` file
+
+2. Relay transport thread (inside the Relay client):
+- runs HTTP requests via libcurl multi
+- keeps up to `K = max_inflight` requests active
+- returns completions to the main thread
+
+The public contract is intentionally small: one output path in, one final audio
+file out. Any temporary chunk WAV handling is internal only.
+
+## Installation
+
+### Prebuilt binaries
+
+Download a release asset for your platform from:
+
+- <https://github.com/planetis-m/chunktts/releases/latest>
+
+Runtime dependencies:
+
+- Linux: `libcurl` and `libsndfile`
+- macOS: `curl` and `libsndfile` (Homebrew)
+- Windows: no extra runtime install if the archive bundles the required DLLs
+
+Keep the executable and any bundled runtime libraries in the same directory.
+
+### Build from source
+
+<details>
+<summary>Linux x86_64</summary>
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y libcurl4-openssl-dev libsndfile1-dev libsndfile-utils
 atlas install
 nim c -d:release -o:chunktts src/app.nim
 ```
 
-Run:
+</details>
+
+<details>
+<summary>macOS arm64</summary>
 
 ```bash
-export DEEPINFRA_API_KEY=...
-printf 'First chunk.<break>Second chunk.<break>Third chunk.\n' | ./chunktts out
+brew install curl libsndfile
+atlas install
+nim c -d:release -o:chunktts src/app.nim
 ```
 
-Output:
+</details>
 
-```text
-out/
-  0001.wav
-  0002.wav
-  0003.wav
+<details>
+<summary>Windows x86_64 (PowerShell)</summary>
+
+```powershell
+atlas install
+nim c -d:release -o:chunktts.exe src/app.nim
 ```
 
-## What the input should look like
+</details>
 
-`chunktts` reads all text from `stdin` and splits on a marker string.
-The default marker is `<break>`.
+## Runtime configuration
+
+Optional `config.json` next to the executable overrides built-in defaults.
+If `DEEPINFRA_API_KEY` is set, it overrides `api_key` from `config.json`.
+
+Supported keys:
+
+- `api_key`
+- `break_marker`
+- `voice`
+- `speed`
+- `max_inflight`
 
 Example:
-
-```text
-Introduction paragraph.<break>
-This should become the second audio file.<break>
-Closing section.
-```
-
-Whitespace around each chunk is trimmed. Empty chunks are dropped, so repeated
-markers like `<break><break>` do not create empty WAV files.
-
-## CLI
-
-```bash
-./chunktts OUT_DIR < input.txt
-./chunktts --help
-```
-
-That is the full CLI.
-
-- `OUT_DIR` is required.
-- Input always comes from `stdin`.
-- `stdout` is unused during normal operation.
-- Logs and fatal errors go to `stderr`.
-
-## Config
-
-Optional `config.json` next to the executable can override the most important
-runtime settings:
 
 ```json
 {
@@ -91,18 +110,6 @@ runtime settings:
 }
 ```
 
-Supported keys:
-
-- `api_key`: fallback API key if `DEEPINFRA_API_KEY` is not set
-- `break_marker`: exact string used to split stdin
-- `voice`: Kokoro voice name
-- `speed`: playback speed, clamped to the supported range
-- `max_inflight`: maximum number of concurrent in-flight TTS requests
-
-Environment precedence:
-
-- `DEEPINFRA_API_KEY` overrides `config.json.api_key`
-
 Built-in defaults:
 
 - endpoint: `https://api.deepinfra.com/v1/openai/audio/speech`
@@ -112,79 +119,76 @@ Built-in defaults:
 - speed: `1.0`
 - max inflight: `32`
 
-## Installation
-
-### From source
-
-Linux:
+## CLI
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y libcurl4-openssl-dev libsndfile1-dev
-atlas install
-nim c -d:release -o:chunktts src/app.nim
+./chunktts OUTPUT.opus < input.txt
+./chunktts --help
 ```
 
-macOS:
+- `OUTPUT.opus` is required
+- input always comes from `stdin`
+- `stdout` is unused during normal operation
+- logs and fatal errors go to `stderr`
+
+## Input format
+
+`chunktts` splits stdin on a marker string. The default marker is `<break>`.
+
+Example:
+
+```text
+Introduction paragraph.<break>
+This should become the second spoken section.<break>
+Closing section.
+```
+
+Whitespace around each chunk is trimmed. Empty chunks are dropped, so repeated
+markers like `<break><break>` do not create silent segments.
+
+## Quick start
 
 ```bash
-brew install curl libsndfile
-atlas install
-nim c -d:release -o:chunktts src/app.nim
+export DEEPINFRA_API_KEY=...
+printf 'First chunk.<break>Second chunk.<break>Third chunk.\n' | \
+  ./chunktts output.opus
 ```
 
-Windows:
+Typical upstream workflow:
 
-- install Nim
-- install Atlas
-- install `curl` and `libsndfile` through `vcpkg`
-- build with:
+1. generate or preprocess text
+2. insert `<break>` markers where audio boundaries should be
+3. pipe the result into `chunktts`
+4. consume one final `.opus` file
 
-```powershell
-atlas install
-nim c -d:release -o:chunktts.exe src/app.nim
-```
-
-### Prebuilt binaries
-
-GitHub release archives are produced by
-[release.yml](/home/ageralis/chunktts/.github/workflows/release.yml).
-
-Linux and macOS builds still rely on system `libcurl` and `libsndfile`
-runtime libraries. Windows release archives bundle the required DLLs.
-
-## Exit Codes
+## Exit codes
 
 - `0`: all chunks succeeded
 - `2`: at least one chunk failed after retries
-- `3`: fatal startup or runtime failure
+- `3`: fatal startup/runtime failure
 
-## Practical Workflow
+If any chunk fails after retries, `chunktts` does not publish the final
+`.opus` file.
 
-Preprocess text with another tool, insert `<break>` markers where you want
-audio boundaries, then hand the result to `chunktts`:
+## Requirements
 
-```bash
-cat marked_script.txt | ./chunktts wav_out
-```
-
-If your upstream step emits a different marker, set it in `config.json` and
-keep the CLI unchanged.
+- DeepInfra API key via `DEEPINFRA_API_KEY` or `config.json`
+- marked-up stdin text containing chunk boundaries
+- if building from source: Nim `>= 2.2.8`, Atlas, and platform dev packages for
+  `libcurl` and `libsndfile`
 
 ## Verification
-
-Run the local test suite:
 
 ```bash
 nim test tests/ci.nims
 ```
 
-This includes:
+The test suite covers:
 
-- chunk-splitting behavior
+- chunk splitting
 - request-id packing
 - retry/error classification
-- `libsndfile` wrapper validation
+- `libsndfile` read/write validation, including direct `.opus` output
 - OpenAI speech request construction
-- an integration test that checks retry handling and real `max_inflight`
-  behavior against a local stub server
+- integration coverage for retry handling, ordered concatenation, and
+  real `max_inflight` behavior against a local stub server

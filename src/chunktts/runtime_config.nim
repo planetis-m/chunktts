@@ -8,7 +8,7 @@ import ./[constants, logging, types]
 
 type
   CliArgs = object
-    outputDir: string
+    outputPath: string
 
   JsonRuntimeConfig = object
     api_key: string
@@ -19,7 +19,7 @@ type
 
 const HelpText = """
 Usage:
-  chunktts OUT_DIR < input.txt
+  chunktts OUTPUT.opus < input.txt
 
 Options:
   --help, -h       Show this help and exit.
@@ -29,16 +29,16 @@ proc cliError(message: string) =
   quit(message & "\n\n" & HelpText, ExitFatalRuntime)
 
 proc parseCliArgs(cliArgs: seq[string]): CliArgs =
-  result = CliArgs(outputDir: "")
+  result = CliArgs(outputPath: "")
   var parser = initOptParser(cliArgs)
 
   for kind, key, val in parser.getopt():
     case kind
     of cmdArgument:
-      if result.outputDir.len == 0:
-        result.outputDir = parser.key
+      if result.outputPath.len == 0:
+        result.outputPath = parser.key
       else:
-        cliError("multiple output directories specified")
+        cliError("multiple output paths specified")
     of cmdLongOption:
       case key
       of "help":
@@ -53,8 +53,8 @@ proc parseCliArgs(cliArgs: seq[string]): CliArgs =
     of cmdEnd:
       discard
 
-  if result.outputDir.len == 0:
-    cliError("missing required OUT_DIR argument")
+  if result.outputPath.len == 0:
+    cliError("missing required OUTPUT.opus argument")
 
 proc defaultJsonRuntimeConfig(): JsonRuntimeConfig =
   JsonRuntimeConfig(
@@ -107,7 +107,7 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
     raise newException(ValueError, "break marker must not be empty")
 
   result = RuntimeConfig(
-    outputDir: parsed.outputDir,
+    outputPath: parsed.outputPath,
     breakMarker: resolvedBreakMarker,
     openaiConfig: OpenAIConfig(
       url: ApiUrl,

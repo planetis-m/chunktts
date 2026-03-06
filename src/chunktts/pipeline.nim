@@ -2,7 +2,7 @@ import std/[monotimes, os, random, strformat, strutils, times]
 import relay
 import openai
 import openai_audio_speech, openai_retry
-import ./[constants, request_id_codec, retry_and_errors, retry_queue, sndfile_wrap,
+import ./[request_id_codec, retry_and_errors, retry_queue, sndfile_wrap,
   tts_client, types]
 
 const
@@ -13,6 +13,7 @@ type
     inFlightCount: int
     activeCount: int
     staged: seq[ChunkResult]
+    decodedChunks: seq[DecodedAudio]
     retryQueue: RetryQueue
     nextSubmitSeqId: int
     nextFinalizeSeqId: int
@@ -21,10 +22,8 @@ type
     allSucceeded: bool
     rng: Rand
 
-proc okChunkResult(path: sink string; attempts: int;
-    audioInfo: ChunkAudioInfo): ChunkResult {.inline.} =
+proc okChunkResult(attempts: int; audioInfo: ChunkAudioInfo): ChunkResult {.inline.} =
   ChunkResult(
-    outputPath: path,
     attempts: attempts,
     status: ChunkOk,
     audioInfo: audioInfo,
@@ -36,7 +35,6 @@ proc okChunkResult(path: sink string; attempts: int;
 proc errorChunkResult(attempts: int; kind: ChunkErrorKind;
     message: sink string; httpStatus = 0): ChunkResult {.inline.} =
   ChunkResult(
-    outputPath: "",
     attempts: attempts,
     status: ChunkError,
     audioInfo: default(ChunkAudioInfo),
@@ -50,6 +48,7 @@ proc initPipelineState(total: int): PipelineState =
     inFlightCount: 0,
     activeCount: 0,
     staged: newSeq[ChunkResult](total),
+    decodedChunks: newSeq[DecodedAudio](total),
     retryQueue: initRetryQueue(),
     nextSubmitSeqId: 0,
     nextFinalizeSeqId: 0,
@@ -59,41 +58,47 @@ proc initPipelineState(total: int): PipelineState =
     rng: initRand(getMonoTime().ticks)
   )
 
-proc outputFilePath(cfg: RuntimeConfig; seqId: int): string =
-  let fileName = align($(seqId + 1), FileDigits, '0') & ".wav"
-  result = cfg.outputDir / fileName
+proc chunkTempPath(cfg: RuntimeConfig; seqId, attempt: int): string =
+  let fileName = fmt".chunk-{seqId + 1:04d}.attempt{attempt}.wav"
+  result = cfg.outputPath & fileName
 
-proc tempFilePath(cfg: RuntimeConfig; seqId, attempt: int): string =
-  let fileName = fmt".{align($(seqId + 1), FileDigits, '0')}.attempt{attempt}.tmp.wav"
-  result = cfg.outputDir / fileName
+proc tempOutputPath(cfg: RuntimeConfig): string =
+  result = cfg.outputPath & ".tmp"
 
 proc replaceFile(srcPath, dstPath: string) =
   if fileExists(dstPath):
     removeFile(dstPath)
   moveFile(srcPath, dstPath)
 
-proc persistAudioFile(cfg: RuntimeConfig; seqId, attempt: int;
-    body: string): tuple[path: string, info: ChunkAudioInfo] =
-  let finalPath = outputFilePath(cfg, seqId)
-  let tempPath = tempFilePath(cfg, seqId, attempt)
-  var finalized = false
+proc decodeChunkAudio(cfg: RuntimeConfig; seqId, attempt: int;
+    body: string): DecodedAudio =
+  let tempPath = chunkTempPath(cfg, seqId, attempt)
 
   writeFile(tempPath, body)
+  defer:
+    if fileExists(tempPath):
+      removeFile(tempPath)
+
+  result = readDecodedAudio(tempPath)
+
+proc chunkAudioInfo(audio: DecodedAudio): ChunkAudioInfo =
+  ChunkAudioInfo(
+    sampleRate: audio.info.sampleRate,
+    channels: audio.info.channels,
+    frames: audio.info.frames
+  )
+
+proc writeFinalOpus(cfg: RuntimeConfig; decodedChunks: seq[DecodedAudio]) =
+  let tempPath = tempOutputPath(cfg)
+  var finalized = false
   defer:
     if not finalized and fileExists(tempPath):
       removeFile(tempPath)
 
-  let fileInfo = readAudioFileInfo(tempPath)
-  replaceFile(tempPath, finalPath)
+  let combined = concatAudio(decodedChunks)
+  writeOpusFile(tempPath, combined)
+  replaceFile(tempPath, cfg.outputPath)
   finalized = true
-  result = (
-    path: finalPath,
-    info: ChunkAudioInfo(
-      sampleRate: fileInfo.sampleRate,
-      channels: fileInfo.channels,
-      frames: fileInfo.frames
-    )
-  )
 
 proc flushOrderedResults(state: var PipelineState) =
   while state.nextFinalizeSeqId < state.staged.len and
@@ -162,11 +167,11 @@ proc processAudioSuccess(cfg: RuntimeConfig; seqId, attempt: int; body: string;
     )
   else:
     try:
-      let persisted = persistAudioFile(cfg, seqId, attempt, body)
+      let audio = decodeChunkAudio(cfg, seqId, attempt, body)
+      state.decodedChunks[seqId] = audio
       state.staged[seqId] = okChunkResult(
-        path = persisted.path,
         attempts = attempt,
-        audioInfo = persisted.info
+        audioInfo = audio.chunkAudioInfo()
       )
     except IOError:
       state.staged[seqId] = errorChunkResult(
@@ -262,5 +267,8 @@ proc runPipeline*(cfg: RuntimeConfig; chunks: seq[string]; client: Relay): bool 
     if state.remaining > 0 and not drained:
       waitForProgress(cfg, client, maxInFlight, maxAttempts, retryPolicy, state)
       flushOrderedResults(state)
+
+  if state.allSucceeded:
+    writeFinalOpus(cfg, state.decodedChunks)
 
   result = state.allSucceeded

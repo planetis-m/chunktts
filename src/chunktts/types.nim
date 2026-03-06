@@ -10,7 +10,7 @@ type
     maxRetries*: int
 
   RuntimeConfig* = object
-    outputDir*: string
+    outputPath*: string
     breakMarker*: string
     openaiConfig*: OpenAIConfig
     networkConfig*: NetworkConfig
@@ -35,7 +35,6 @@ type
     frames*: int64
 
   ChunkResult* = object
-    outputPath*: string
     attempts*: int
     status*: ChunkResultStatus
     audioInfo*: ChunkAudioInfo
