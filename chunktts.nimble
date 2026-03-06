@@ -1,9 +1,9 @@
 version       = "0.2.0"
-author        = "ageralis"
+author        = "planetis"
 description   = "Generate one Opus speech file from marked-up text with Kokoro TTS"
-license       = "AGPL-3.0-only"
+license       = "AGPL-3.0"
 srcDir        = "src"
-bin           = @["chunktts"]
+bin           = @["app"]
 
 requires "nim >= 2.2.8"
 requires "https://github.com/planetis-m/mimalloc_nim"
