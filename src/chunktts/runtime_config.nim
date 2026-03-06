@@ -13,7 +13,6 @@ type
 
   JsonRuntimeConfig = object
     api_key: string
-    break_marker: string
     voice: string
     speed: float
     max_inflight: int
@@ -64,7 +63,6 @@ proc parseCliArgs(cliArgs: seq[string]): CliArgs =
 proc defaultJsonRuntimeConfig(): JsonRuntimeConfig =
   JsonRuntimeConfig(
     api_key: "",
-    break_marker: BreakMarker,
     voice: Voice,
     speed: Speed,
     max_inflight: MaxInflight
@@ -106,15 +104,11 @@ proc buildRuntimeConfig*(cliArgs: seq[string]): RuntimeConfig =
   let configPath = Path(getAppDir()) / Path(DefaultConfigPath)
   let rawConfig = loadOptionalJsonRuntimeConfig(configPath)
   let resolvedApiKey = resolveApiKey(rawConfig.api_key)
-  let resolvedBreakMarker = ifNonEmpty(rawConfig.break_marker, BreakMarker)
-
-  if resolvedBreakMarker.len == 0:
-    raise newException(ValueError, "break marker must not be empty")
 
   result = RuntimeConfig(
     inputPath: parsed.inputPath,
     outputPath: parsed.outputPath,
-    breakMarker: resolvedBreakMarker,
+    breakMarker: BreakMarker,
     openaiConfig: OpenAIConfig(
       url: ApiUrl,
       apiKey: resolvedApiKey

@@ -152,7 +152,7 @@ proc main() =
   let cfg = RuntimeConfig(
     inputPath: inputPath,
     outputPath: outputPath,
-    breakMarker: "<break>",
+    breakMarker: "<bk>",
     openaiConfig: OpenAIConfig(
       url: "http://127.0.0.1:" & $port & "/v1/openai/audio/speech",
       apiKey: "test-key"

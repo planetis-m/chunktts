@@ -3,7 +3,7 @@ const
 
   ApiUrl* = "https://api.deepinfra.com/v1/openai/audio/speech"
   Model* = "hexgrad/Kokoro-82M"
-  BreakMarker* = "<break>"
+  BreakMarker* = "<bk>"
   Voice* = "af_bella"
   Speed* = 1.0
   MaxInflight* = 32

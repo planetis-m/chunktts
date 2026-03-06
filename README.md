@@ -2,7 +2,7 @@
 
 Ordered text-to-speech from marked-up text files to one `.opus` file.
 
-`chunktts` reads text that already contains split markers like `<break>`,
+`chunktts` reads text that already contains split markers like `<bk>`,
 sends the chunks to DeepInfra's OpenAI-compatible Kokoro TTS endpoint, and
 writes one final `.opus` file in deterministic chunk order.
 
@@ -93,7 +93,6 @@ If `DEEPINFRA_API_KEY` is set, it overrides `api_key` from `config.json`.
 Supported keys:
 
 - `api_key`
-- `break_marker`
 - `voice`
 - `speed`
 - `max_inflight`
@@ -102,7 +101,6 @@ Example:
 
 ```json
 {
-  "break_marker": "<break>",
   "voice": "af_bella",
   "speed": 1.0,
   "max_inflight": 32
@@ -113,7 +111,7 @@ Built-in defaults:
 
 - endpoint: `https://api.deepinfra.com/v1/openai/audio/speech`
 - model: `hexgrad/Kokoro-82M`
-- marker: `<break>`
+- marker: `<bk>`
 - voice: `af_bella`
 - speed: `1.0`
 - max inflight: `32`
@@ -132,18 +130,18 @@ Built-in defaults:
 ## Input format
 
 `chunktts` splits the input file on a marker string. The default marker is
-`<break>`.
+`<bk>`.
 
 Example:
 
 ```text
-Introduction paragraph.<break>
-This should become the second spoken section.<break>
+Introduction paragraph.<bk>
+This should become the second spoken section.<bk>
 Closing section.
 ```
 
 Whitespace around each chunk is trimmed. Empty chunks are dropped, so repeated
-markers like `<break><break>` do not create silent segments.
+markers like `<bk><bk>` do not create silent segments.
 
 ## Quick start
 
@@ -155,7 +153,7 @@ export DEEPINFRA_API_KEY=...
 Typical upstream workflow:
 
 1. generate or preprocess text into a file
-2. insert `<break>` markers where audio boundaries should be
+2. insert `<bk>` markers where audio boundaries should be
 3. run `chunktts INPUT.txt OUTPUT.opus`
 4. consume one final `.opus` file
 
