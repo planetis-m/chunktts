@@ -1,4 +1,6 @@
 deps/
+/atlas.config
+/nim.cfg
 /chunktts
 /chunktts.exe
 tests/test_chunk_split
