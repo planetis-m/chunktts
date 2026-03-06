@@ -1,0 +1,9 @@
+deps/
+chunktts
+chunktts.exe
+tests/test_chunk_split
+tests/test_request_id_codec
+tests/test_retry_and_errors
+tests/test_sndfile_wrap
+tests/test_openai_audio_speech
+tests/test_pipeline_integration

@@ -1,0 +1,30 @@
+switch("path", "$projectdir/../src")
+switch("path", "$projectdir/../deps/jsonx/src")
+switch("path", "$projectdir/../deps/relay/src")
+switch("path", "$projectdir/../deps/openai/src")
+switch("mm", "atomicArc")
+
+when defined(windows):
+  switch("cc", "vcc")
+  let vcpkgRoot = getEnv("VCPKG_ROOT", "C:/vcpkg/installed/x64-windows-release")
+  switch("passL", vcpkgRoot & "/lib/libcurl.lib")
+  switch("passL", vcpkgRoot & "/lib/sndfile.lib")
+elif defined(macosx):
+  switch("passL", "-L" & staticExec("brew --prefix curl") & "/lib")
+  switch("passL", "-L" & staticExec("brew --prefix libsndfile") & "/lib")
+  switch("passL", "-lcurl")
+  switch("passL", "-lsndfile")
+else:
+  switch("passL", "-lcurl")
+  switch("passL", "-lsndfile")
+
+when defined(addressSanitizer):
+  switch("debugger", "native")
+  switch("define", "noSignalHandler")
+  switch("define", "useMalloc")
+  when defined(windows):
+    switch("passC", "/fsanitize=address")
+  else:
+    switch("cc", "clang")
+    switch("passC", "-fsanitize=address -fno-omit-frame-pointer")
+    switch("passL", "-fsanitize=address -fno-omit-frame-pointer")
