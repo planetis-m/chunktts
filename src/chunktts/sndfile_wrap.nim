@@ -53,7 +53,7 @@ proc frames*(audioFile: AudioFile): int64 {.inline.} =
 
 proc openAudioFileForWrite(path: string; sampleRate, channels: int;
     format: cint): AudioFile =
-  var rawInfo = SfInfo(
+  let rawInfo = SfInfo(
     frames: 0,
     samplerate: sampleRate.cint,
     channels: channels.cint,

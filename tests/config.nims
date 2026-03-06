@@ -3,6 +3,7 @@ switch("path", "$projectdir/../deps/jsonx/src")
 switch("path", "$projectdir/../deps/relay/src")
 switch("path", "$projectdir/../deps/openai/src")
 switch("mm", "atomicArc")
+switch("passC", "-DCURL_DISABLE_TYPECHECK")
 
 when defined(windows):
   switch("cc", "vcc")

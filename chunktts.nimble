@@ -1,6 +1,6 @@
 version       = "0.1.0"
 author        = "ageralis"
-description   = "Chunk marked-up text files into one Kokoro TTS opus file"
+description   = "Generate one Opus speech file from marked-up text with Kokoro TTS"
 license       = "AGPL-3.0-only"
 srcDir        = "src"
 bin           = @["chunktts"]
