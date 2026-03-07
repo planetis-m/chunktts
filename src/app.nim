@@ -21,7 +21,7 @@ proc runApp*(): int =
       raise newException(ValueError, "input file does not exist: " & cfg.inputPath)
 
     let outputDir = parentDir(cfg.outputPath)
-    if outputDir.len > 0 and not dirExists(outputDir):
+    if not dirExists(outputDir):
       createDir(outputDir)
     let chunks = splitChunks(readFile(cfg.inputPath), cfg.breakMarker)
     if chunks.len == 0:
