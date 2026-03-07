@@ -25,6 +25,7 @@ proc memorySeek(offset: SfCount; whence: cint; userData: pointer): SfCount {.cde
   let reader = memoryReader(userData)
   let encodedLen = int64(reader.encoded.len)
   var nextPosition: int64
+  var hasValidWhence = true
 
   case whence
   of SfSeekSet:
@@ -34,10 +35,11 @@ proc memorySeek(offset: SfCount; whence: cint; userData: pointer): SfCount {.cde
   of SfSeekEnd:
     nextPosition = encodedLen + int64(offset)
   else:
-    result = -1
-    return
+    hasValidWhence = false
 
-  if nextPosition < 0 or nextPosition > encodedLen:
+  if not hasValidWhence:
+    result = -1
+  elif nextPosition < 0 or nextPosition > encodedLen:
     result = -1
   else:
     reader.position = nextPosition
@@ -45,17 +47,13 @@ proc memorySeek(offset: SfCount; whence: cint; userData: pointer): SfCount {.cde
 
 proc memoryRead(ptrBuffer: pointer; count: SfCount; userData: pointer): SfCount {.cdecl.} =
   let reader = memoryReader(userData)
-  if count <= 0:
-    return
-
-  let remaining = int64(reader.encoded.len) - reader.position
-  if remaining <= 0:
-    return
-
-  let readLen = min(int64(count), remaining)
-  copyMem(ptrBuffer, addr reader.encoded[int(reader.position)], int(readLen))
-  reader.position.inc(readLen)
-  result = SfCount(readLen)
+  if count > 0:
+    let remaining = int64(reader.encoded.len) - reader.position
+    if remaining > 0:
+      let readLen = min(int64(count), remaining)
+      copyMem(ptrBuffer, addr reader.encoded[int(reader.position)], int(readLen))
+      reader.position.inc(readLen)
+      result = SfCount(readLen)
 
 proc memoryTell(userData: pointer): SfCount {.cdecl.} =
   result = SfCount(memoryReader(userData).position)
