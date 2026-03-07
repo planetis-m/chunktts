@@ -1,9 +1,10 @@
 switch("path", "$projectdir/../src")
-switch("path", "$projectdir/../deps/jsonx/src")
-switch("path", "$projectdir/../deps/relay/src")
-switch("path", "$projectdir/../deps/openai/src")
 switch("mm", "atomicArc")
 switch("passC", "-DCURL_DISABLE_TYPECHECK")
+
+when not defined(windows):
+  switch("passL", "-lcurl")
+  switch("passL", "-lsndfile")
 
 when defined(windows):
   switch("cc", "vcc")
@@ -16,16 +17,11 @@ elif defined(macosx):
   switch("passC", "-I" & staticExec("brew --prefix libsndfile") & "/include")
   switch("passL", "-L" & staticExec("brew --prefix curl") & "/lib")
   switch("passL", "-L" & staticExec("brew --prefix libsndfile") & "/lib")
-  switch("passL", "-lcurl")
-  switch("passL", "-lsndfile")
-else:
-  switch("passL", "-lcurl")
-  switch("passL", "-lsndfile")
 
 when defined(addressSanitizer):
   switch("debugger", "native")
   switch("define", "noSignalHandler")
-  switch("define", "useMalloc")
+
   when defined(windows):
     switch("passC", "/fsanitize=address")
   else:

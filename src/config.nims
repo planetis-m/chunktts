@@ -3,13 +3,12 @@ switch("mm", "atomicArc")
 
 import mimalloc/config
 
+switch("define", "jsonxLenient")
 switch("passC", "-DCURL_DISABLE_TYPECHECK")
 
 when not defined(windows):
   switch("passL", "-lcurl")
   switch("passL", "-lsndfile")
-
-switch("define", "jsonxLenient")
 
 when defined(macosx):
   switch("passC", "-I" & staticExec("brew --prefix curl") & "/include")
@@ -22,8 +21,6 @@ elif defined(windows):
   switch("passC", "-I" & vcpkgRoot & "/include")
   switch("passL", vcpkgRoot & "/lib/libcurl.lib")
   switch("passL", vcpkgRoot & "/lib/sndfile.lib")
-else:
-  switch("passL", "-Wl,-rpath,\\$ORIGIN")
 
 when defined(threadSanitizer) or defined(addressSanitizer):
   switch("debugger", "native")
