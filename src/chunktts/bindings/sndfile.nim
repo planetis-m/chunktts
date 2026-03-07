@@ -1,11 +1,5 @@
-when defined(windows):
-  type
-    SfCount* = clonglong
-else:
-  type
-    SfCount* = clong
-
 type
+  SfCount* = clonglong
   SndFileHandle* = distinct pointer
 
   SfVioGetFilelen* = proc(userData: pointer): SfCount {.cdecl.}
