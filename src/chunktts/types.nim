@@ -1,4 +1,4 @@
-import openai
+import openai/core
 
 type
   NetworkConfig* = object

@@ -1,5 +1,5 @@
 type
-  SfCount* = clonglong
+  SfCount* {.importc: "sf_count_t", header: "<sndfile.h>".} = int64
   SndFileHandle* = distinct pointer
 
   SfVioGetFilelen* = proc(userData: pointer): SfCount {.cdecl.}

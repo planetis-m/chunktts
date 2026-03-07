@@ -1,7 +1,6 @@
 import relay
 import jsonx
-import openai
-import openai_audio_speech
+import openai/[audio_speech, core]
 
 proc sampleConfig(apiKey = "sk-test"): OpenAIConfig =
   OpenAIConfig(

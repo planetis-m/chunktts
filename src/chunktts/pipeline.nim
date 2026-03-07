@@ -1,6 +1,6 @@
 import std/[monotimes, os, random, times]
 import relay
-import openai, openai_audio_speech, openai_retry
+import openai/[audio_speech, core, retry]
 import ./[request_id_codec, retry_and_errors, retry_queue, sndfile_wrap,
   tts_client, types]
 

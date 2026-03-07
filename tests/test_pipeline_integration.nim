@@ -1,6 +1,6 @@
 import std/[asyncdispatch, asynchttpserver, base64, locks, os, strutils, times]
 import relay
-import openai
+import openai/core
 import chunktts/[pipeline, sndfile_wrap, types]
 
 const
