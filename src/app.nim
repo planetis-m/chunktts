@@ -25,6 +25,9 @@ proc runApp*(): int =
     if chunks.len == 0:
       raise newException(ValueError, "input file did not produce any non-empty chunks")
 
+    logInfo("starting TTS pipeline for " & $chunks.len & " chunk(s) from " &
+      cfg.inputPath & ", please wait...")
+
     client = newRelay(
       maxInFlight = cfg.networkConfig.maxInflight,
       defaultTimeoutMs = cfg.networkConfig.totalTimeoutMs
