@@ -19,10 +19,8 @@ proc runApp*(): int =
         "missing API key; set DEEPINFRA_API_KEY or api_key in config.json")
     if not fileExists(cfg.inputPath):
       raise newException(ValueError, "input file does not exist: " & cfg.inputPath)
+    createDir(cfg.outputPath.parentDir)
 
-    let outputDir = parentDir(cfg.outputPath)
-    if not dirExists(outputDir):
-      createDir(outputDir)
     let chunks = splitChunks(readFile(cfg.inputPath), cfg.breakMarker)
     if chunks.len == 0:
       raise newException(ValueError, "input file did not produce any non-empty chunks")
