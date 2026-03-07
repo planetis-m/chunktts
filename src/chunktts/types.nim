@@ -18,7 +18,6 @@ type
 
   ChunkErrorKind* = enum
     NoError,
-    FileError,
     NetworkError,
     Timeout,
     RateLimit,

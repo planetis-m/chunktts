@@ -1,7 +1,6 @@
 import std/[monotimes, os, random, times]
 import relay
-import openai
-import openai_audio_speech, openai_retry
+import openai, openai_audio_speech, openai_retry
 import ./[request_id_codec, retry_and_errors, retry_queue, sndfile_wrap,
   tts_client, types]
 
@@ -128,16 +127,10 @@ proc processAudioSuccess(cfg: RuntimeConfig; seqId, attempt: int; body: string;
       state.staged[seqId] = okChunkResult(
         attempts = attempt
       )
-    except IOError:
+    except CatchableError:
       state.staged[seqId] = errorChunkResult(
         attempts = attempt,
         kind = AudioError,
-        message = getCurrentExceptionMsg()
-      )
-    except OSError:
-      state.staged[seqId] = errorChunkResult(
-        attempts = attempt,
-        kind = FileError,
         message = getCurrentExceptionMsg()
       )
 
