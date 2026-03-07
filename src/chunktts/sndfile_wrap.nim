@@ -1,7 +1,5 @@
 import ./bindings/sndfile
 
-const SfFormatOpus* = SF_FORMAT_OGG or SF_FORMAT_OPUS
-
 type
   AudioFile* = object
     raw: SndFileHandle
@@ -12,6 +10,63 @@ type
     channels*: int
     frames*: int64
     samples*: seq[float32]
+
+  MemoryAudioReader = object
+    encoded: string
+    position: int64
+
+proc memoryReader(userData: pointer): ptr MemoryAudioReader {.inline.} =
+  cast[ptr MemoryAudioReader](userData)
+
+proc memoryGetFileLen(userData: pointer): SfCount {.cdecl.} =
+  result = SfCount(memoryReader(userData).encoded.len)
+
+proc memorySeek(offset: SfCount; whence: cint; userData: pointer): SfCount {.cdecl.} =
+  let reader = memoryReader(userData)
+  let encodedLen = int64(reader.encoded.len)
+  var nextPosition: int64
+
+  case whence
+  of SfSeekSet:
+    nextPosition = int64(offset)
+  of SfSeekCur:
+    nextPosition = reader.position + int64(offset)
+  of SfSeekEnd:
+    nextPosition = encodedLen + int64(offset)
+  else:
+    result = -1
+    return
+
+  if nextPosition < 0 or nextPosition > encodedLen:
+    result = -1
+  else:
+    reader.position = nextPosition
+    result = SfCount(nextPosition)
+
+proc memoryRead(ptrBuffer: pointer; count: SfCount; userData: pointer): SfCount {.cdecl.} =
+  let reader = memoryReader(userData)
+  if count <= 0:
+    return
+
+  let remaining = int64(reader.encoded.len) - reader.position
+  if remaining <= 0:
+    return
+
+  let readLen = min(int64(count), remaining)
+  copyMem(ptrBuffer, addr reader.encoded[int(reader.position)], int(readLen))
+  reader.position.inc(readLen)
+  result = SfCount(readLen)
+
+proc memoryTell(userData: pointer): SfCount {.cdecl.} =
+  result = SfCount(memoryReader(userData).position)
+
+let MemoryReadVirtualIo = SfVirtualIo(
+  get_filelen: memoryGetFileLen,
+  seek: memorySeek,
+  read: memoryRead,
+  write: nil,
+  tell: memoryTell
+)
 
 proc `=destroy`*(audioFile: AudioFile) =
   if pointer(audioFile.raw) != nil:
@@ -27,7 +82,6 @@ proc `=sink`*(dest: var AudioFile; src: AudioFile) =
 
 proc `=wasMoved`*(audioFile: var AudioFile) =
   audioFile.raw = SndFileHandle(nil)
-  audioFile.info = default(SfInfo)
 
 proc raiseSndFileError*(context: string; sndFile = SndFileHandle(nil)) {.noinline.} =
   let detail = $sf_strerror(sndFile)
@@ -41,6 +95,20 @@ proc openAudioFile*(path: string): AudioFile =
   )
   if pointer(result.raw) == nil:
     raiseSndFileError("sf_open failed")
+
+proc openMemoryAudioFile(reader: var MemoryAudioReader): AudioFile =
+  var info: SfInfo
+  result = AudioFile(
+    raw: sf_open_virtual(
+      addr MemoryReadVirtualIo,
+      SFM_READ,
+      addr info,
+      cast[pointer](addr reader)
+    ),
+    info: info
+  )
+  if pointer(result.raw) == nil:
+    raiseSndFileError("sf_open_virtual failed")
 
 proc sampleRate*(audioFile: AudioFile): int {.inline.} =
   int(audioFile.info.samplerate)
@@ -68,8 +136,7 @@ proc openAudioFileForWrite(path: string; sampleRate, channels: int;
   if pointer(result.raw) == nil:
     raiseSndFileError("sf_open failed")
 
-proc readDecodedAudio*(path: string): DecodedAudio =
-  let audioFile = openAudioFile(path)
+proc decodeAudioFile(audioFile: sink AudioFile): DecodedAudio =
   let frames = audioFile.frames
   let channels = audioFile.channels
   let sampleCount = int(frames) * channels
@@ -89,39 +156,17 @@ proc readDecodedAudio*(path: string): DecodedAudio =
     if framesRead != frames.SfCount:
       raiseSndFileError("sf_readf_float failed", audioFile.raw)
 
-proc concatAudio*(chunks: openArray[DecodedAudio]): DecodedAudio =
-  if chunks.len == 0:
-    raise newException(ValueError, "cannot concatenate zero audio chunks")
+proc readDecodedAudio*(path: string): DecodedAudio =
+  result = decodeAudioFile(openAudioFile(path))
 
-  let sampleRate = chunks[0].sampleRate
-  let channels = chunks[0].channels
-  var totalFrames = 0'i64
-
-  for chunk in chunks:
-    if chunk.sampleRate != sampleRate:
-      raise newException(ValueError, "chunk sample rates do not match")
-    if chunk.channels != channels:
-      raise newException(ValueError, "chunk channel counts do not match")
-    totalFrames.inc(chunk.frames)
-
-  result = DecodedAudio(
-    sampleRate: sampleRate,
-    channels: channels,
-    frames: totalFrames,
-    samples: @[]
+proc readDecodedAudioBytes*(encoded: sink string): DecodedAudio =
+  var reader = MemoryAudioReader(
+    encoded: encoded,
+    position: 0
   )
+  result = decodeAudioFile(openMemoryAudioFile(reader))
 
-  for chunk in chunks:
-    result.samples.add(chunk.samples)
-
-proc writeOpusFile*(path: string; audio: DecodedAudio) =
-  let audioFile = openAudioFileForWrite(
-    path,
-    audio.sampleRate,
-    audio.channels,
-    SfFormatOpus
-  )
-
+proc writeDecodedAudio(audioFile: AudioFile; audio: DecodedAudio) =
   if audio.samples.len > 0:
     let framesWritten = sf_writef_float(
       audioFile.raw,
@@ -130,3 +175,32 @@ proc writeOpusFile*(path: string; audio: DecodedAudio) =
     )
     if framesWritten != audio.frames.SfCount:
       raiseSndFileError("sf_writef_float failed", audioFile.raw)
+
+proc writeOpusFile*(path: string; audio: DecodedAudio) =
+  let audioFile = openAudioFileForWrite(
+    path,
+    audio.sampleRate,
+    audio.channels,
+    SF_FORMAT_OGG or SF_FORMAT_OPUS
+  )
+  writeDecodedAudio(audioFile, audio)
+
+proc writeOpusFile*(path: string; chunks: openArray[DecodedAudio]) =
+  if chunks.len == 0:
+    raise newException(ValueError, "cannot write zero audio chunks")
+
+  let sampleRate = chunks[0].sampleRate
+  let channels = chunks[0].channels
+  let audioFile = openAudioFileForWrite(
+    path,
+    sampleRate,
+    channels,
+    SF_FORMAT_OGG or SF_FORMAT_OPUS
+  )
+
+  for chunk in chunks:
+    if chunk.sampleRate != sampleRate:
+      raise newException(ValueError, "chunk sample rates do not match")
+    if chunk.channels != channels:
+      raise newException(ValueError, "chunk channel counts do not match")
+    writeDecodedAudio(audioFile, chunk)

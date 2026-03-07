@@ -1,4 +1,4 @@
-import std/[monotimes, os, random, strformat, strutils, times]
+import std/[monotimes, os, random, times]
 import relay
 import openai
 import openai_audio_speech, openai_retry
@@ -55,41 +55,6 @@ proc initPipelineState(total: int): PipelineState =
     allSucceeded: true,
     rng: initRand(getMonoTime().ticks)
   )
-
-proc chunkTempPath(cfg: RuntimeConfig; seqId, attempt: int): string =
-  let fileName = fmt".chunk-{seqId + 1:04d}.attempt{attempt}.wav"
-  result = cfg.outputPath & fileName
-
-proc tempOutputPath(cfg: RuntimeConfig): string =
-  result = cfg.outputPath & ".tmp"
-
-proc replaceFile(srcPath, dstPath: string) =
-  if fileExists(dstPath):
-    removeFile(dstPath)
-  moveFile(srcPath, dstPath)
-
-proc decodeChunkAudio(cfg: RuntimeConfig; seqId, attempt: int;
-    body: string): DecodedAudio =
-  let tempPath = chunkTempPath(cfg, seqId, attempt)
-
-  writeFile(tempPath, body)
-  defer:
-    if fileExists(tempPath):
-      removeFile(tempPath)
-
-  result = readDecodedAudio(tempPath)
-
-proc writeFinalOpus(cfg: RuntimeConfig; decodedChunks: seq[DecodedAudio]) =
-  let tempPath = tempOutputPath(cfg)
-  var finalized = false
-  defer:
-    if not finalized and fileExists(tempPath):
-      removeFile(tempPath)
-
-  let combined = concatAudio(decodedChunks)
-  writeOpusFile(tempPath, combined)
-  replaceFile(tempPath, cfg.outputPath)
-  finalized = true
 
 proc flushOrderedResults(state: var PipelineState) =
   while state.nextFinalizeSeqId < state.staged.len and
@@ -158,7 +123,7 @@ proc processAudioSuccess(cfg: RuntimeConfig; seqId, attempt: int; body: string;
     )
   else:
     try:
-      let audio = decodeChunkAudio(cfg, seqId, attempt, body)
+      let audio = readDecodedAudioBytes(body)
       state.decodedChunks[seqId] = audio
       state.staged[seqId] = okChunkResult(
         attempts = attempt
@@ -259,6 +224,6 @@ proc runPipeline*(cfg: RuntimeConfig; chunks: seq[string]; client: Relay): bool 
       flushOrderedResults(state)
 
   if state.allSucceeded:
-    writeFinalOpus(cfg, state.decodedChunks)
+    writeOpusFile(cfg.outputPath, state.decodedChunks)
 
   result = state.allSucceeded
