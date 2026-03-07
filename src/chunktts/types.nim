@@ -30,15 +30,9 @@ type
     ChunkOk = "ok",
     ChunkError = "error"
 
-  ChunkAudioInfo* = object
-    sampleRate*: int
-    channels*: int
-    frames*: int64
-
   ChunkResult* = object
     attempts*: int
     status*: ChunkResultStatus
-    audioInfo*: ChunkAudioInfo
     errorKind*: ChunkErrorKind
     errorMessage*: string
     httpStatus*: int

@@ -22,11 +22,10 @@ type
     allSucceeded: bool
     rng: Rand
 
-proc okChunkResult(attempts: int; audioInfo: ChunkAudioInfo): ChunkResult {.inline.} =
+proc okChunkResult(attempts: int): ChunkResult {.inline.} =
   ChunkResult(
     attempts: attempts,
     status: ChunkOk,
-    audioInfo: audioInfo,
     errorKind: NoError,
     errorMessage: "",
     httpStatus: 0
@@ -37,7 +36,6 @@ proc errorChunkResult(attempts: int; kind: ChunkErrorKind;
   ChunkResult(
     attempts: attempts,
     status: ChunkError,
-    audioInfo: default(ChunkAudioInfo),
     errorKind: kind,
     errorMessage: message,
     httpStatus: httpStatus
@@ -80,13 +78,6 @@ proc decodeChunkAudio(cfg: RuntimeConfig; seqId, attempt: int;
       removeFile(tempPath)
 
   result = readDecodedAudio(tempPath)
-
-proc chunkAudioInfo(audio: DecodedAudio): ChunkAudioInfo =
-  ChunkAudioInfo(
-    sampleRate: audio.sampleRate,
-    channels: audio.channels,
-    frames: audio.frames
-  )
 
 proc writeFinalOpus(cfg: RuntimeConfig; decodedChunks: seq[DecodedAudio]) =
   let tempPath = tempOutputPath(cfg)
@@ -170,8 +161,7 @@ proc processAudioSuccess(cfg: RuntimeConfig; seqId, attempt: int; body: string;
       let audio = decodeChunkAudio(cfg, seqId, attempt, body)
       state.decodedChunks[seqId] = audio
       state.staged[seqId] = okChunkResult(
-        attempts = attempt,
-        audioInfo = audio.chunkAudioInfo()
+        attempts = attempt
       )
     except IOError:
       state.staged[seqId] = errorChunkResult(
