@@ -11,58 +11,31 @@ type
   PipelineState = object
     inFlightCount: int
     activeCount: int
-    staged: seq[ChunkResult]
     decodedChunks: seq[DecodedAudio]
     retryQueue: RetryQueue
     nextSubmitSeqId: int
-    nextFinalizeSeqId: int
     remaining: int
     submitBatch: RequestBatch
     allSucceeded: bool
     rng: Rand
 
-proc okChunkResult(attempts: int): ChunkResult {.inline.} =
-  ChunkResult(
-    attempts: attempts,
-    status: ChunkOk,
-    errorKind: NoError,
-    errorMessage: "",
-    httpStatus: 0
-  )
-
-proc errorChunkResult(attempts: int; kind: ChunkErrorKind;
-    message: sink string; httpStatus = 0): ChunkResult {.inline.} =
-  ChunkResult(
-    attempts: attempts,
-    status: ChunkError,
-    errorKind: kind,
-    errorMessage: message,
-    httpStatus: httpStatus
-  )
-
 proc initPipelineState(total: int): PipelineState =
   PipelineState(
     inFlightCount: 0,
     activeCount: 0,
-    staged: newSeq[ChunkResult](total),
     decodedChunks: newSeq[DecodedAudio](total),
     retryQueue: initRetryQueue(),
     nextSubmitSeqId: 0,
-    nextFinalizeSeqId: 0,
     remaining: total,
     submitBatch: RequestBatch(),
     allSucceeded: true,
     rng: initRand(getMonoTime().ticks)
   )
 
-proc flushOrderedResults(state: var PipelineState) =
-  while state.nextFinalizeSeqId < state.staged.len and
-      state.staged[state.nextFinalizeSeqId].status != ChunkPending:
-    if state.staged[state.nextFinalizeSeqId].status != ChunkOk:
-      state.allSucceeded = false
-    state.staged[state.nextFinalizeSeqId] = default(ChunkResult)
-    inc state.nextFinalizeSeqId
-    dec state.remaining
+proc finalizeChunk(state: var PipelineState; succeeded: bool) =
+  if not succeeded:
+    state.allSucceeded = false
+  dec state.remaining
 
 proc startBatchIfAny(client: Relay; state: var PipelineState) =
   if state.submitBatch.len > 0:
@@ -83,11 +56,7 @@ proc queueAttempt(cfg: RuntimeConfig; chunks: seq[string]; seqId, attempt: int;
     inc state.inFlightCount
     result = true
   except CatchableError:
-    state.staged[seqId] = errorChunkResult(
-      attempts = attempt,
-      kind = NetworkError,
-      message = getCurrentExceptionMsg()
-    )
+    state.finalizeChunk(succeeded = false)
 
 proc submitDueRetries(cfg: RuntimeConfig; chunks: seq[string]; maxInFlight: int;
     state: var PipelineState) =
@@ -112,30 +81,19 @@ proc submitFreshAttempts(cfg: RuntimeConfig; chunks: seq[string]; maxInFlight: i
         dec state.activeCount
       inc state.nextSubmitSeqId
 
-proc processAudioSuccess(cfg: RuntimeConfig; seqId, attempt: int; body: string;
-    state: var PipelineState) =
+proc processAudioSuccess(seqId: int; body: string; state: var PipelineState) =
   if body.len == 0:
-    state.staged[seqId] = errorChunkResult(
-      attempts = attempt,
-      kind = AudioError,
-      message = "tts response body was empty"
-    )
+    state.finalizeChunk(succeeded = false)
   else:
     try:
       let audio = readDecodedAudioBytes(body)
       state.decodedChunks[seqId] = audio
-      state.staged[seqId] = okChunkResult(
-        attempts = attempt
-      )
+      state.finalizeChunk(succeeded = true)
     except CatchableError:
-      state.staged[seqId] = errorChunkResult(
-        attempts = attempt,
-        kind = AudioError,
-        message = getCurrentExceptionMsg()
-      )
+      state.finalizeChunk(succeeded = false)
 
-proc processResult(cfg: RuntimeConfig; item: RequestResult; maxAttempts: int;
-    retryPolicy: RetryPolicy; state: var PipelineState) =
+proc processResult(item: RequestResult; maxAttempts: int; retryPolicy: RetryPolicy;
+    state: var PipelineState) =
   let requestId = item.response.request.requestId
   let meta = unpackRequestId(requestId)
   let seqId = meta.seqId
@@ -151,33 +109,27 @@ proc processResult(cfg: RuntimeConfig; item: RequestResult; maxAttempts: int;
     ))
   else:
     if item.error.kind != teNone or not isHttpSuccess(item.response.code):
-      let finalError = classifyFinalError(item)
-      state.staged[seqId] = errorChunkResult(
-        attempts = attempt,
-        kind = finalError.kind,
-        message = finalError.message,
-        httpStatus = finalError.httpStatus
-      )
+      state.finalizeChunk(succeeded = false)
     else:
-      processAudioSuccess(cfg, seqId, attempt, item.response.body, state)
+      processAudioSuccess(seqId, item.response.body, state)
     dec state.activeCount
 
-proc drainReadyResults(cfg: RuntimeConfig; client: Relay; maxAttempts: int;
+proc drainReadyResults(client: Relay; maxAttempts: int;
     retryPolicy: RetryPolicy; state: var PipelineState): bool =
   result = false
   var item: RequestResult
   while client.pollForResult(item):
-    processResult(cfg, item, maxAttempts, retryPolicy, state)
+    processResult(item, maxAttempts, retryPolicy, state)
     result = true
 
-proc waitForSingleResult(cfg: RuntimeConfig; client: Relay; maxAttempts: int;
-    retryPolicy: RetryPolicy; state: var PipelineState) =
+proc waitForSingleResult(client: Relay; maxAttempts: int; retryPolicy: RetryPolicy;
+    state: var PipelineState) =
   var item: RequestResult
   if not client.waitForResult(item):
     raise newException(IOError, "relay worker stopped before all results arrived")
-  processResult(cfg, item, maxAttempts, retryPolicy, state)
+  processResult(item, maxAttempts, retryPolicy, state)
 
-proc waitForProgress(cfg: RuntimeConfig; client: Relay; maxInFlight, maxAttempts: int;
+proc waitForProgress(client: Relay; maxInFlight, maxAttempts: int;
     retryPolicy: RetryPolicy; state: var PipelineState) =
   if state.inFlightCount == 0:
     let sleepMs = nextRetryDelayMs(state.retryQueue)
@@ -188,9 +140,9 @@ proc waitForProgress(cfg: RuntimeConfig; client: Relay; maxInFlight, maxAttempts
   else:
     let nextRetryMs = nextRetryDelayMs(state.retryQueue)
     if nextRetryMs < 0:
-      waitForSingleResult(cfg, client, maxAttempts, retryPolicy, state)
+      waitForSingleResult(client, maxAttempts, retryPolicy, state)
     elif nextRetryMs == 0 and state.inFlightCount == maxInFlight:
-      waitForSingleResult(cfg, client, maxAttempts, retryPolicy, state)
+      waitForSingleResult(client, maxAttempts, retryPolicy, state)
     elif nextRetryMs > 0:
       sleep(min(RetryPollSliceMs, nextRetryMs))
 
@@ -207,14 +159,10 @@ proc runPipeline*(cfg: RuntimeConfig; chunks: seq[string]; client: Relay): bool 
     submitDueRetries(cfg, chunks, maxInFlight, state)
     submitFreshAttempts(cfg, chunks, maxInFlight, state)
     startBatchIfAny(client, state)
-    flushOrderedResults(state)
-
-    let drained = drainReadyResults(cfg, client, maxAttempts, retryPolicy, state)
-    flushOrderedResults(state)
+    let drained = drainReadyResults(client, maxAttempts, retryPolicy, state)
 
     if state.remaining > 0 and not drained:
-      waitForProgress(cfg, client, maxInFlight, maxAttempts, retryPolicy, state)
-      flushOrderedResults(state)
+      waitForProgress(client, maxInFlight, maxAttempts, retryPolicy, state)
 
   if state.allSucceeded:
     writeOpusFile(cfg.outputPath, state.decodedChunks)
