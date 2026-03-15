@@ -34,7 +34,11 @@ proc runApp*(): int =
     )
 
     let allSucceeded = runPipeline(cfg, chunks, client)
-    result = if allSucceeded: ExitAllOk else: ExitPartialFailure
+    if allSucceeded:
+      result = ExitAllOk
+    else:
+      logWarn("TTS pipeline completed with partial failures; output file was not written")
+      result = ExitPartialFailure
   except CatchableError:
     logError(getCurrentExceptionMsg())
     shouldAbort = true
